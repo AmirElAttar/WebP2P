@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Service API Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #4a5568;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .config-section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .config-section h2 {
+            color: #4a5568;
+            margin-bottom: 15px;
+        }
+        
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            font-weight: bold;
+            min-width: 120px;
+            color: #4a5568;
+        }
+        
+        .input-group input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        .btn:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn.success {
+            background: #48bb78;
+        }
+        
+        .btn.success:hover {
+            background: #38a169;
+        }
+        
+        .btn.warning {
+            background: #ed8936;
+        }
+        
+        .btn.warning:hover {
+            background: #dd6b20;
+        }
+        
+        .btn.danger {
+            background: #e53e3e;
+        }
+        
+        .btn.danger:hover {
+            background: #c53030;
+        }
+        
+        .status-bar {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.online {
+            background: #48bb78;
+            box-shadow: 0 0 8px #48bb78;
+        }
+        
+        .status-indicator.offline {
+            background: #e53e3e;
+        }
+        
+        .output-section {
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .log-timestamp {
+            color: #a0aec0;
+            font-size: 11px;
+        }
+        
+        .log-success {
+            color: #68d391;
+        }
+        
+        .log-error {
+            color: #fc8181;
+        }
+        
+        .log-warning {
+            color: #f6e05e;
+        }
+        
+        .log-info {
+            color: #63b3ed;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-card {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 P2P Service API Test Client</h1>
+        
+        <!-- Configuration Section -->
+        <div class="config-section">
+            <h2>⚙️ Service Configuration</h2>
+            <div class="input-group">
+                <label for="serviceUrl">Service URL:</label>
+                <input type="text" id="serviceUrl" value="http://localhost:8847" placeholder="http://localhost:8847">
+            </div>
+            <div class="input-group">
+                <label for="testFile">Test Filename:</label>
+                <input type="text" id="testFile" value="test.txt" placeholder="test.txt">
+            </div>
+        </div>
+        
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div>
+                <span class="status-indicator offline" id="statusIndicator"></span>
+                <span id="connectionStatus">Disconnected</span>
+            </div>
+            <div>
+                <span>Last Update: </span>
+                <span id="lastUpdate">Never</span>
+            </div>
+        </div>
+        
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="statPort">-</div>
+                <div class="stat-label">Port</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statUptime">-</div>
+                <div class="stat-label">Uptime (s)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statRequests">0</div>
+                <div class="stat-label">Requests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statErrors">0</div>
+                <div class="stat-label">Errors</div>
+            </div>
+        </div>
+        
+        <!-- Test Buttons -->
+        <div class="button-grid">
+            <button class="btn success" onclick="testConnection()">🔌 Test Connection</button>
+            <button class="btn" onclick="getStatus()">📊 Get Status</button>
+            <button class="btn" onclick="listFiles()">📁 List Files</button>
+            <button class="btn" onclick="getPeers()">👥 Get Peers</button>
+            <button class="btn" onclick="getFile()">📄 Get File</button>
+            <button class="btn" onclick="uploadFile()">📤 Upload File</button>
+            <button class="btn warning" onclick="stressTest()">⚡ Stress Test</button>
+            <button class="btn danger" onclick="clearOutput()">🗑️ Clear Output</button>
+        </div>
+        
+        <!-- Output Section -->
+        <div class="output-section" id="output">
+            <div class="log-entry">
+                <span class="log-timestamp">[Ready]</span>
+                <span class="log-info">P2P Service API Test Client initialized. Click "Test Connection" to begin.</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let requestCount = 0;
+        let errorCount = 0;
+        let isConnected = false;
+        
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = `log-${type}`;
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `
+                <span class="log-timestamp">[${timestamp}]</span>
+                <span class="${logClass}">${message}</span>
+            `;
+            
+            output.appendChild(logEntry);
+            output.scrollTop = output.scrollHeight;
+            
+            // Update last update time
+            document.getElementById('lastUpdate').textContent = timestamp;
+        }
+        
+        function updateStats() {
+            document.getElementById('statRequests').textContent = requestCount;
+            document.getElementById('statErrors').textContent = errorCount;
+        }
+        
+        function updateConnectionStatus(connected) {
+            isConnected = connected;
+            const indicator = document.getElementById('statusIndicator');
+            const status = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                indicator.className = 'status-indicator online';
+                status.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator offline';
+                status.textContent = 'Disconnected';
+            }
+        }
+        
+        function getServiceUrl() {
+            return document.getElementById('serviceUrl').value.trim();
+        }
+        
+        async function makeRequest(endpoint, method = 'GET', body = null) {
+            requestCount++;
+            updateStats();
+            
+            const url = getServiceUrl() + endpoint;
+            log(`Making ${method} request to: ${endpoint}`, 'info');
+            
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch(url, options);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log(`✅ Success: ${JSON.stringify(data, null, 2)}`, 'success');
+                    updateConnectionStatus(true);
+                    return data;
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                errorCount++;
+                updateStats();
+                updateConnectionStatus(false);
+                log(`❌ Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+        
+        async function testConnection() {
+            log('🔌 Testing connection to P2P service...', 'info');
+            try {
+                const data = await makeRequest('/api/status');
+                log('🎉 Connection successful! Service is running.', 'success');
+                
+                // Update stats from status response
+                if (data.port) document.getElementById('statPort').textContent = data.port;
+                if (data.uptime) document.getElementById('statUptime').textContent = data.uptime;
+                
+            } catch (error) {
+                log('💥 Connection failed. Make sure the service is running.', 'error');
+            }
+        }
+        
+        async function getStatus() {
+            try {
+                const data = await makeRequest('/api/status');
+                log(`📊 Service Status:`, 'info');
+                log(`   Status: ${data.status}`, 'info');
+                log(`   Port: ${data.port}`, 'info');
+                log(`   Uptime: ${data.uptime} seconds`, 'info');
+                
+                // Update stats
+                document.getElementById('statPort').textContent = data.port || '-';
+                document.getElementById('statUptime').textContent = data.uptime || '-';
+                
+            } catch (error) {
+                log('Failed to get service status', 'error');
+            }
+        }
+        
+        async function listFiles() {
+            try {
+                const data = await makeRequest('/api/files');
+                log(`📁 Found ${data.count} files:`, 'success');
+                
+                data.files.forEach(file => {
+                    const sizeKB = (file.size / 1024).toFixed(1);
+                    log(`   📄 ${file.name} (${sizeKB} KB) - ${file.path}`, 'info');
+                });
+                
+            } catch (error) {
+                log('Failed to list files', 'error');
+            }
+        }
+        
+        async function getPeers() {
+            try {
+                const data = await makeRequest('/api/peers');
+                log(`👥 Found ${data.count} connected peers:`, 'success');
+                
+                data.peers.forEach(peer => {
+                    log(`   👤 ${peer.id} at ${peer.ip}:${peer.port}`, 'info');
+                });
+                
+            } catch (error) {
+                log('Failed to get peers', 'error');
+            }
+        }
+        
+        async function getFile() {
+            const filename = document.getElementById('testFile').value.trim();
+            if (!filename) {
+                log('⚠️ Please enter a filename to test', 'warning');
+                return;
+            }
+            
+            try {
+                const data = await makeRequest(`/api/file/${filename}`);
+                log(`📄 File data received:`, 'success');
+                log(`   Filename: ${data.filename}`, 'info');
+                log(`   Size: ${data.size} bytes`, 'info');
+                log(`   Data: ${data.data.substring(0, 50)}...`, 'info');
+                
+            } catch (error) {
+                log(`Failed to get file: ${filename}`, 'error');
+            }
+        }
+        
+        async function uploadFile() {
+            try {
+                const uploadData = {
+                    filename: 'test-upload.txt',
+                    content: 'This is a test file upload',
+                    size: 26
+                };
+                
+                const data = await makeRequest('/api/upload', 'POST', uploadData);
+                log(`📤 Upload result:`, 'success');
+                log(`   Success: ${data.success}`, 'info');
+                log(`   Message: ${data.message}`, 'info');
+                
+            } catch (error) {
+                log('Failed to upload file', 'error');
+            }
+        }
+        
+        async function stressTest() {
+            log('⚡ Starting stress test (10 rapid requests)...', 'warning');
+            const startTime = Date.now();
+            
+            const promises = [];
+            for (let i = 0; i < 10; i++) {
+                promises.push(makeRequest('/api/status'));
+            }
+            
+            try {
+                await Promise.all(promises);
+                const duration = Date.now() - startTime;
+                log(`✅ Stress test completed in ${duration}ms`, 'success');
+                log(`   Average response time: ${(duration / 10).toFixed(1)}ms`, 'info');
+            } catch (error) {
+                log('❌ Stress test failed', 'error');
+            }
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            log('Console cleared', 'info');
+            
+            // Reset stats
+            requestCount = 0;
+            errorCount = 0;
+            updateStats();
+        }
+        
+        // Auto-refresh status every 30 seconds
+        setInterval(() => {
+            if (isConnected) {
+                getStatus();
+            }
+        }, 30000);
+        
+        // Initial connection test
+        setTimeout(() => {
+            testConnection();
+        }, 1000);
+    </script>
+</body>
+</html>

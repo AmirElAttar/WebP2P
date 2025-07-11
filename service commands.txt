@@ -1,0 +1,24 @@
+# Stop the service
+sc stop P2pWindowsService
+
+# Start the service
+sc start P2pWindowsService
+
+# Query service status
+sc query P2pWindowsService
+
+# Delete the service (after stopping)
+sc delete P2pWindowsService
+
+# Set service to auto-start
+sc config P2pWindowsService start= auto
+
+# Set service to manual start
+sc config P2pWindowsService start= demand
+
+installation and uninstallation:
+# Install the service
+P2pSrv.exe install
+
+# Uninstall the service
+P2pSrv.exe uninstall

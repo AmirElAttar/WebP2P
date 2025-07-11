@@ -1,0 +1,58 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{3ED3603E-FD89-439B-AE8D-2188CE931B0D}|P2pSrv\\P2pSrv.vcxitems|D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{3ED3603E-FD89-439B-AE8D-2188CE931B0D}|P2pSrv\\P2pSrv.vcxitems|solutionrelative:P2pSrv\\ServiceMain.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{3ED3603E-FD89-439B-AE8D-2188CE931B0D}|P2pSrv\\P2pSrv.vcxitems|D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{3ED3603E-FD89-439B-AE8D-2188CE931B0D}|P2pSrv\\P2pSrv.vcxitems|solutionrelative:P2pSrv\\ServiceMain.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "ServiceMain.h",
+              "DocumentMoniker": "D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.h",
+              "RelativeDocumentMoniker": "P2pSrv\\ServiceMain.h",
+              "ToolTip": "D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.h",
+              "RelativeToolTip": "P2pSrv\\ServiceMain.h",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2025-07-10T23:13:47.033Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "ServiceMain.cpp",
+              "DocumentMoniker": "D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.cpp",
+              "RelativeDocumentMoniker": "P2pSrv\\ServiceMain.cpp",
+              "ToolTip": "D:\\Master\\distributed\\P2pApp\\WebP2P\\P2pSrv\\P2pSrv\\ServiceMain.cpp",
+              "RelativeToolTip": "P2pSrv\\ServiceMain.cpp",
+              "ViewState": "AgIAAB4AAAAAAAAAAAAkwDEAAAA3AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-07-10T23:13:31.853Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{56df62a4-05a3-4e5b-aa1a-99371ccfb997}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
