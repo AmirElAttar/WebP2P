@@ -8,7 +8,7 @@ class PeerAdmin(admin.ModelAdmin):
 
 @admin.register(File)
 class FileAdmin(admin.ModelAdmin):
-    list_display = ('filename', 'size', 'created_at')
+    list_display = ('hash', 'size', 'created_at')
     search_fields = ('filename', 'hash')
     list_filter = ('created_at',)
 

@@ -12,9 +12,8 @@ class Peer(models.Model):
         ordering = ['-last_active']
         
 class File(models.Model):
-    filename = models.CharField(max_length=255)
     size = models.BigIntegerField()
-    hash = models.CharField(max_length=64)  # SHA256
+    hash = models.CharField(max_length=64, unique=True, primary_key=True)  # SHA256
     created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
@@ -22,6 +21,14 @@ class File(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+class FileName(models.Model):
+    file = models.ForeignKey(File, on_delete=models.CASCADE, related_name='names')
+    filename = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = [('file', 'filename')]  # Each filename can only map to a file once
 
 class FileAvailability(models.Model):
     file = models.ForeignKey(File, on_delete=models.CASCADE)

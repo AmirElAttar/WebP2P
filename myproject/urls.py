@@ -21,6 +21,6 @@ from myapp.views import register_file, list_files, api_status
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/register', register_file),
-    path('api/files', list_files),
+    path('api/files', list_files),      
     path('api/status', api_status)
 ]

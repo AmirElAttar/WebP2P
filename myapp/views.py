@@ -2,9 +2,10 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.exceptions import APIException
-from .models import Peer, File, FileAvailability
+from .models import Peer, File, FileAvailability, FileName
 from django.utils import timezone
 from datetime import timedelta
+from django.db.models import Q
 
 
 class FileAlreadyRegistered(APIException):
@@ -20,51 +21,79 @@ def api_status(request):
     live_peers = Peer.objects.filter(last_active__gte=fifteen_minutes_ago).count()
 
     return Response({
-        "status": "online",  # backend is alive
+        "status": "online",
         "peers": total_peers,
         "live_peers": live_peers,
         "files": total_files
     })
 
 @api_view(['POST'])
-def register_file(request):
-    required_fields = ['filename', 'size', 'hash', 'peer_url']
-    if not all(field in request.data for field in required_fields):
-        return Response({"error": "Missing required field"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Validate SHA256 hash length
-    if len(request.data['hash']) != 64:
-        return Response({"error": "Invalid hash length"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Get or create peer
-    peer, _ = Peer.objects.update_or_create(
-        url=request.data['peer_url'],
-        defaults={'last_active': timezone.now()}
-    )
-    
-    # Get or create file
-    file_obj, created = File.objects.get_or_create(
-        filename=request.data['filename'],
-        size=request.data['size'],
-        hash=request.data['hash']
-    )
-    
-    # Create file availability
-    FileAvailability.objects.get_or_create(file=file_obj, peer=peer)
-    if not created:
-        raise FileAlreadyRegistered()
-    
-    return Response({"success": True, "file_id": file_obj.id})
+def register_file(request):  # Changed to accept request parameter
+    try:
+        data = request.data
+        
+        # Validate required fields
+        required_fields = ['filename', 'hash', 'size', 'peer_url']
+        if not all(field in data for field in required_fields):
+            return Response(
+                {"error": "Missing required fields: filename, hash, size, peer_url"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # File registration logic
+        file, created = File.objects.get_or_create(
+            hash=data['hash'],
+            defaults={'size': data['size']}
+        )
+        
+        # Register the filename
+        FileName.objects.get_or_create(
+            file=file,
+            filename=data['filename']
+        )
+        
+        # Register availability
+        peer, _ = Peer.objects.get_or_create(url=data['peer_url'])
+        FileAvailability.objects.get_or_create(file=file, peer=peer)
+        
+        return Response({
+            "status": "success",
+            "hash": file.hash,
+            "filename": data['filename'],
+            "peer_url": data['peer_url']
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 @api_view(['GET'])
 def list_files(request):
-    files = []
-    for file in File.objects.prefetch_related('fileavailability_set__peer').all():
+    search_query = request.GET.get('name', '').strip()
+    
+    matching_names = FileName.objects.filter(
+        filename__icontains=search_query
+    ).select_related('file').prefetch_related('file__fileavailability_set__peer')
+    
+    results = []
+    seen_hashes = set()
+    
+    for name in matching_names:
+        file = name.file
+        if file.hash in seen_hashes:
+            continue
+            
+        seen_hashes.add(file.hash)
         peers = [avail.peer.url for avail in file.fileavailability_set.all()]
-        files.append({
-            "filename": file.filename,
-            "size": file.size,
-            "hash": file.hash,
-            "peers": peers
-        })
-    return Response({"files": files})
+        
+        for file_name in file.names.all():
+            results.append({
+                "filename": file_name.filename,
+                "size": file.size,
+                "hash": file.hash,
+                "peers": peers
+            })
+    
+    return Response({"files": results})
