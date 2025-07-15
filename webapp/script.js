@@ -423,7 +423,23 @@
                     // In a real implementation, we would use:
                     // const response = await fetch(`${peerUrl}/download/${filename}`);
                     // And track download progress
+                    // const serviceUrll = getLocalServiceUrl();
+                    // const response = await fetch(`${serviceUrll}/api/download`);
                     
+                    const serviceUrll = getLocalServiceUrl(); // Corrected variable name as per previous context
+
+                    // Define your parameters
+                    const param1Value = "value1";
+                    const param2Value = "anotherValue";
+
+                    // Construct the URL with query parameters
+                    const url = new URL(`${serviceUrll}/api/download`);
+                    url.searchParams.append('param1', param1Value);
+                    url.searchParams.append('param2', param2Value);
+
+                    // Make the fetch request
+                    const response = await fetch(url.toString()); 
+
                     // Simulating real download for demo
                     for (let progress = 0; progress <= 100; progress += 5) {
                         await new Promise(resolve => setTimeout(resolve, 150));
