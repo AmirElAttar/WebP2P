@@ -1,9 +1,8 @@
-
-        // =============================================
+ // =============================================
         // Configuration
         // =============================================
         const CONFIG = {
-            MOCK_MODE: true, // Set to false for real backend
+            MOCK_MODE: false, // Set to false for real backend
             MOCK_SUCCESS_RATE: 0.9, // 90% success rate for mock
             NETWORK_DELAY: { MIN: 10, MAX: 100 } // Simulated network latency
         };
@@ -261,7 +260,6 @@
                     for (const file of data.files) {
                         try {
                             // In a real implementation, we would calculate the SHA hash here
-                            const fileHash = "real-sha-to-be-calculated";
                             
                             // Send registration to backend
                             const backendUrl = getBackendUrl();
@@ -269,9 +267,9 @@
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
-                                    filename: file.name,
+                                    filename: file.filename,
                                     size: file.size,
-                                    hash: fileHash,
+                                    hash: file.sha256,
                                     peer_url: serviceUrl
                                 })
                             });

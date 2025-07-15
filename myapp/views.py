@@ -33,7 +33,7 @@ def register_file(request):  # Changed to accept request parameter
         data = request.data
         
         # Validate required fields
-        required_fields = ['filename', 'hash', 'size', 'peer_url']
+        required_fields = ['filename', 'peer_url']
         if not all(field in data for field in required_fields):
             return Response(
                 {"error": "Missing required fields: filename, hash, size, peer_url"},
