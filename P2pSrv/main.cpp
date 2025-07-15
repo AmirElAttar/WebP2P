@@ -2,63 +2,71 @@
 #include <iostream>
 
 /**
-* @brief Main entry point for the Windows service application
+* @brief WinMain entry point for the Windows service application
 *
 * This function serves as the primary entry point for the service application.
 * It handles command-line arguments for service installation/uninstallation
 * and starts the service control dispatcher when run as a service.
 *
-* @param argc Number of command-line arguments
-* @param argv Array of command-line argument strings
-* @return int Application exit code (0 for success, non-zero for failure)
-*
 * @details Command-line argument handling:
-* - "install": Installs the service in the Service Control Manager
-* - "uninstall": Removes the service from the Service Control Manager
-* - No arguments: Starts the service control dispatcher (normal service execution)
-* - Invalid arguments: Displays usage information
-*
-* @details Service execution flow:
-* 1. Parses command-line arguments
-* 2. For install/uninstall: Calls appropriate static methods and exits
-* 3. For normal execution: Sets up SERVICE_TABLE_ENTRY and calls StartServiceCtrlDispatcher
-* 4. StartServiceCtrlDispatcher blocks until service terminates
-* 5. Returns appropriate exit code based on operation result
-*
-* @note When run as a service, this function will not return until the service stops
+* start a hidden window
+* start http server 
+* continue working without GUI untill not reciving a heartbeat signal from web page for 5 seconds
 */
-int _tmain(int argc, TCHAR* argv[])
-{
-	// Check command line arguments
-	if (argc > 1)
-	{
-		if (_tcscmp(argv[1], _T("install")) == 0)
-		{
-			return CWindowsService::InstallService() ? 0 : 1;
-		}
-		else if (_tcscmp(argv[1], _T("uninstall")) == 0)
-		{
-			return CWindowsService::UninstallService() ? 0 : 1;
-		}
-		else
-		{
-			_tprintf(_T("Usage: %s [install|uninstall]\n"), argv[0]);
-			return 1;
-		}
+#define TIMER_ID 1
+#define TIMEOUT_MS 500000 // 500 seconds for testing
+
+volatile bool timerElapsed = false;
+
+// Window procedure to handle messages
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	if (msg == WM_TIMER && wParam == TIMER_ID) {
+		timerElapsed = true;
+		KillTimer(hwnd, TIMER_ID);
+		//PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+	// Register a window class
+	const wchar_t CLASS_NAME[] = L"HiddenTimerWindowClass";
+
+	WNDCLASS wc = {};
+	wc.lpfnWndProc = WndProc;
+	wc.hInstance = hInstance;
+	wc.lpszClassName = CLASS_NAME;
+
+	RegisterClass(&wc);
+
+	// Create a hidden window
+	HWND hwnd = CreateWindowEx(
+		0, CLASS_NAME, L"Hidden Timer Window",
+		0, 0, 0, 0, 0,
+		HWND_MESSAGE, NULL, hInstance, NULL);
+
+	if (!hwnd) {
+		MessageBox(NULL, L"Failed to create hidden window", L"Error", MB_OK | MB_ICONERROR);
+		return 1;
+	}
+	//start http server
+	CWindowsService servic;
+	servic.StartHttpThrd();
+
+	// Set the timer on the hidden window
+	if (!SetTimer(hwnd, TIMER_ID, TIMEOUT_MS, NULL)) {
+		MessageBox(NULL, L"Failed to set timer", L"Error", MB_OK | MB_ICONERROR);
+		return 1;
 	}
 
-	// Service dispatch table
-	SERVICE_TABLE_ENTRY ServiceTable[] =
-	{
-		{ SERVICE_NAME, (LPSERVICE_MAIN_FUNCTION)CWindowsService::ServiceMain },
-		{ NULL, NULL }
-	};
-
-	// Start the service control dispatcher
-	if (StartServiceCtrlDispatcher(ServiceTable) == FALSE)
-	{
-		return GetLastError();
+	// Message loop
+	MSG msg;
+	while (GetMessage(&msg, NULL, 0, 0)) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
 
 	return 0;
 }
+

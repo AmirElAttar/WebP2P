@@ -1,118 +1,104 @@
 #include "WindowsService.h"
-
+#include "tcpserver.h"
+#include <iostream>
+#include <fstream>
+#include<shlobj.h>
+#include "tcpclient.h"
 // Static member initialization
-SERVICE_STATUS        CWindowsService::m_ServiceStatus = { 0 };
-SERVICE_STATUS_HANDLE CWindowsService::m_StatusHandle = NULL;
+
 HANDLE                CWindowsService::m_ServiceStopEvent = INVALID_HANDLE_VALUE;
 HANDLE                CWindowsService::m_hHttpQueue = NULL;
 HTTP_SERVER_SESSION_ID CWindowsService::m_SessionId = 0;
 HTTP_URL_GROUP_ID     CWindowsService::m_UrlGroupId = 0;
 DWORD                 CWindowsService::m_HttpPort = DEFAULT_HTTP_PORT;
+std::vector<localFileHandler> CWindowsService::localFiles;
+TCPFileServer* CWindowsService::m_pTCPServer;
 
 /**
 * @brief Default constructor
 */
-CWindowsService::CWindowsService()
+CWindowsService::CWindowsService() {
+    // Initialize TCP server pointer
+}
+
+
+
+/**
+ * @brief Virtual destructor
+ */
+CWindowsService::~CWindowsService() {
+    StopTCPServerThrd();
+}
+void CWindowsService::StartHttpThrd()
 {
+	hThread = CreateThread(NULL, 0, ServiceWorkerThread, NULL, 0, NULL);
+	if (hThread == NULL){
+        WriteToEventLog("Failed to create HTTP worker thread");
+    } else {
+        WriteToEventLog("HTTP worker thread created successfully");
+	}
+}
+/**
+ * @brief Start TCP server thread
+ */
+void CWindowsService::StartTCPServerThrd() {
+    WriteToEventLog("Starting TCP server");
+	
+    // Create TCP server instance
+	m_pTCPServer = new TCPFileServer(8080, "C:\\SharedFiles");
+    
+    // Initialize and start TCP server
+    if (m_pTCPServer->Initialize() ) {
+		m_pTCPServer->Start();
+        char msg[256];
+        sprintf_s(msg, "TCP server started successfully ");
+        WriteToEventLog(msg);
+    } else {
+        WriteToEventLog("Failed to start TCP server");
+        delete m_pTCPServer;
+        m_pTCPServer = nullptr;
+    }
 }
 
 /**
-* @brief Virtual destructor
-*/
-CWindowsService::~CWindowsService()
-{
+ * @brief Stop TCP server thread
+ */
+void CWindowsService::StopTCPServerThrd() {
+    if (m_pTCPServer) {
+        WriteToEventLog("Stopping TCP server");
+        m_pTCPServer->Stop();
+        delete m_pTCPServer;
+        m_pTCPServer = nullptr;
+        WriteToEventLog("TCP server stopped");
+    }
 }
 
-/**
-* @brief Main service entry point called by SCM
-*/
-void WINAPI CWindowsService::ServiceMain(DWORD argc, LPTSTR *argv)
-{
-	// Register service control handler
-	m_StatusHandle = RegisterServiceCtrlHandler(SERVICE_NAME, ServiceCtrlHandler);
 
-	if (m_StatusHandle == NULL)
-	{
-		WriteToEventLog(_T("RegisterServiceCtrlHandler failed"), EVENTLOG_ERROR_TYPE);
-		return;
-	}
 
-	// Initialize service status
-	ZeroMemory(&m_ServiceStatus, sizeof(m_ServiceStatus));
-	m_ServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	m_ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
-	m_ServiceStatus.dwCurrentState = SERVICE_START_PENDING;
-	m_ServiceStatus.dwWin32ExitCode = 0;
-	m_ServiceStatus.dwServiceSpecificExitCode = 0;
-	m_ServiceStatus.dwCheckPoint = 0;
 
-	// Report initial status to SCM
-	SetServiceStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
-
-	// Create stop event
-	m_ServiceStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	if (m_ServiceStopEvent == NULL)
-	{
-		WriteToEventLog(_T("CreateEvent failed"), EVENTLOG_ERROR_TYPE);
-		SetServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
-		return;
-	}
-
-	// Report running status
-	SetServiceStatus(SERVICE_RUNNING, NO_ERROR, 0);
-
-	// Create worker thread
-	HANDLE hThread = CreateThread(NULL, 0, ServiceWorkerThread, NULL, 0, NULL);
-	if (hThread != NULL)
-	{
-		// Wait for stop event
-		WaitForSingleObject(m_ServiceStopEvent, INFINITE);
-		CloseHandle(hThread);
-	}
-
-	// Cleanup
-	CloseHandle(m_ServiceStopEvent);
-	SetServiceStatus(SERVICE_STOPPED, NO_ERROR, 0);
-}
-
-/**
-* @brief Service control handler for SCM commands
-*/
-void WINAPI CWindowsService::ServiceCtrlHandler(DWORD ctrl)
-{
-	switch (ctrl)
-	{
-	case SERVICE_CONTROL_STOP:
-		SetServiceStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-		SetEvent(m_ServiceStopEvent);
-		break;
-	case SERVICE_CONTROL_INTERROGATE:
-		break;
-	default:
-		break;
-	}
-}
 
 /**
 * @brief Worker thread that runs the HTTP API server
 */
-DWORD WINAPI CWindowsService::ServiceWorkerThread(LPVOID lpParam)
-{
-	WriteToEventLog(_T("Starting HTTP API service"), EVENTLOG_INFORMATION_TYPE);
+DWORD WINAPI CWindowsService::ServiceWorkerThread(LPVOID lpParam){
+	
+	
+	StartTCPServerThrd();
+	
+	
+	WriteToEventLog("Starting HTTP API service");
 
 	// Initialize HTTP server
 	DWORD result = InitializeHttpServer();
-	if (result != ERROR_SUCCESS)
-	{
-		WriteToEventLog(_T("Failed to initialize HTTP server"), EVENTLOG_ERROR_TYPE);
+	if (result != ERROR_SUCCESS){
+		WriteToEventLog("Failed to initialize HTTP server");
 		return result;
 	}
 
 	// Allocate request buffer
 	PHTTP_REQUEST pRequest = (PHTTP_REQUEST)LocalAlloc(LPTR, sizeof(HTTP_REQUEST) + MAX_REQUEST_SIZE);
-	if (pRequest == NULL)
-	{
-		WriteToEventLog(_T("Failed to allocate request buffer"), EVENTLOG_ERROR_TYPE);
+	if (pRequest == NULL){
+		WriteToEventLog("Failed to allocate request buffer");
 		CleanupHttpServer();
 		return ERROR_NOT_ENOUGH_MEMORY;
 	}
@@ -120,28 +106,22 @@ DWORD WINAPI CWindowsService::ServiceWorkerThread(LPVOID lpParam)
 	HTTP_REQUEST_ID requestId = HTTP_NULL_ID;
 	DWORD bytesReceived = 0;
 
-	WriteToEventLog(_T("HTTP API server ready"), EVENTLOG_INFORMATION_TYPE);
+	WriteToEventLog("HTTP API server ready");
 
 	// Main HTTP processing loop
-	while (WaitForSingleObject(m_ServiceStopEvent, 0) != WAIT_OBJECT_0)
-	{
+	while (WaitForSingleObject(m_ServiceStopEvent, 0) != WAIT_OBJECT_0){
 		ZeroMemory(pRequest, sizeof(HTTP_REQUEST) + MAX_REQUEST_SIZE);
 
 		result = HttpReceiveHttpRequest(m_hHttpQueue, requestId, 0, pRequest,
 			sizeof(HTTP_REQUEST) + MAX_REQUEST_SIZE, &bytesReceived, NULL);
 
-		if (result == ERROR_SUCCESS)
-		{
+		if (result == ERROR_SUCCESS){
 			ProcessHttpRequest(pRequest, pRequest->RequestId);
 			requestId = HTTP_NULL_ID;
-		}
-		else if (result == ERROR_MORE_DATA)
-		{
+		}else if (result == ERROR_MORE_DATA){
 			SendJsonResponse(pRequest->RequestId, 413, "{\"error\":\"Request too large\"}");
 			requestId = HTTP_NULL_ID;
-		}
-		else if (result != WAIT_TIMEOUT && result != ERROR_OPERATION_ABORTED)
-		{
+		}else if (result != WAIT_TIMEOUT && result != ERROR_OPERATION_ABORTED){
 			Sleep(100);
 		}
 
@@ -152,58 +132,40 @@ DWORD WINAPI CWindowsService::ServiceWorkerThread(LPVOID lpParam)
 	// Cleanup
 	LocalFree(pRequest);
 	CleanupHttpServer();
-	WriteToEventLog(_T("HTTP API service stopped"), EVENTLOG_INFORMATION_TYPE);
+	WriteToEventLog("HTTP API service stopped");
 	return ERROR_SUCCESS;
 }
 
-/**
-* @brief Start service programmatically (placeholder)
-*/
-void CWindowsService::Start()
-{
-	// Implementation placeholder
-}
 
-/**
-* @brief Stop service programmatically (placeholder)
-*/
-void CWindowsService::Stop()
-{
-	// Implementation placeholder
-}
 
 /**
 * @brief Initialize HTTP server components
 */
-DWORD CWindowsService::InitializeHttpServer()
-{
+DWORD CWindowsService::InitializeHttpServer(){
 	DWORD result = ERROR_SUCCESS;
 	HTTPAPI_VERSION httpApiVersion = HTTPAPI_VERSION_2;
 
-	WriteToEventLog(_T("Initializing HTTP API server"), EVENTLOG_INFORMATION_TYPE);
+	WriteToEventLog("Initializing HTTP API server");
 
 	// Initialize HTTP Server API
 	result = HttpInitialize(httpApiVersion, HTTP_INITIALIZE_SERVER, NULL);
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpInitialize failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpInitialize failed");
 		return result;
 	}
 
 	// Create server session
 	result = HttpCreateServerSession(httpApiVersion, &m_SessionId, 0);
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpCreateServerSession failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpCreateServerSession failed");
 		HttpTerminate(HTTP_INITIALIZE_SERVER, NULL);
 		return result;
 	}
 
 	// Create URL group
 	result = HttpCreateUrlGroup(m_SessionId, &m_UrlGroupId, 0);
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpCreateUrlGroup failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpCreateUrlGroup failed");
 		HttpCloseServerSession(m_SessionId);
 		HttpTerminate(HTTP_INITIALIZE_SERVER, NULL);
 		return result;
@@ -211,9 +173,8 @@ DWORD CWindowsService::InitializeHttpServer()
 
 	// Create request queue
 	result = HttpCreateRequestQueue(httpApiVersion, L"P2pApiQueue", NULL, 0, &m_hHttpQueue);
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpCreateRequestQueue failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpCreateRequestQueue failed");
 		HttpCloseUrlGroup(m_UrlGroupId);
 		HttpCloseServerSession(m_SessionId);
 		HttpTerminate(HTTP_INITIALIZE_SERVER, NULL);
@@ -229,9 +190,8 @@ DWORD CWindowsService::InitializeHttpServer()
 
 	// Add URL to group
 	result = HttpAddUrlToUrlGroup(m_UrlGroupId, wszUrl, 0, 0);
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpAddUrlToUrlGroup failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpAddUrlToUrlGroup failed");
 		CleanupHttpServer();
 		return result;
 	}
@@ -243,16 +203,15 @@ DWORD CWindowsService::InitializeHttpServer()
 
 	result = HttpSetUrlGroupProperty(m_UrlGroupId, HttpServerBindingProperty,
 		&bindingInfo, sizeof(bindingInfo));
-	if (result != NO_ERROR)
-	{
-		WriteToEventLog(_T("HttpSetUrlGroupProperty failed"), EVENTLOG_ERROR_TYPE);
+	if (result != NO_ERROR){
+		WriteToEventLog("HttpSetUrlGroupProperty failed");
 		CleanupHttpServer();
 		return result;
 	}
 
-	TCHAR szMessage[256];
-	_stprintf_s(szMessage, 256, _T("HTTP API server listening on port %d"), m_HttpPort);
-	WriteToEventLog(szMessage, EVENTLOG_INFORMATION_TYPE);
+	char szMessage[256];
+	sprintf(szMessage,  "HTTP API server listening on port %d", m_HttpPort);
+	WriteToEventLog(szMessage);
 
 	return ERROR_SUCCESS;
 }
@@ -260,24 +219,20 @@ DWORD CWindowsService::InitializeHttpServer()
 /**
 * @brief Clean up HTTP server resources
 */
-void CWindowsService::CleanupHttpServer()
-{
-	WriteToEventLog(_T("Cleaning up HTTP server"), EVENTLOG_INFORMATION_TYPE);
+void CWindowsService::CleanupHttpServer(){
+	WriteToEventLog("Cleaning up HTTP server");
 
-	if (m_hHttpQueue != NULL)
-	{
+	if (m_hHttpQueue != NULL){
 		HttpCloseRequestQueue(m_hHttpQueue);
 		m_hHttpQueue = NULL;
 	}
 
-	if (m_UrlGroupId != 0)
-	{
+	if (m_UrlGroupId != 0){
 		HttpCloseUrlGroup(m_UrlGroupId);
 		m_UrlGroupId = 0;
 	}
 
-	if (m_SessionId != 0)
-	{
+	if (m_SessionId != 0){
 		HttpCloseServerSession(m_SessionId);
 		m_SessionId = 0;
 	}
@@ -288,15 +243,12 @@ void CWindowsService::CleanupHttpServer()
 /**
 * @brief Process incoming HTTP requests
 */
-DWORD CWindowsService::ProcessHttpRequest(PHTTP_REQUEST pRequest, HTTP_REQUEST_ID RequestId)
-{
+DWORD CWindowsService::ProcessHttpRequest(PHTTP_REQUEST pRequest, HTTP_REQUEST_ID RequestId){
 	// Extract URL path
 	std::string url;
-	if (pRequest->CookedUrl.pAbsPath)
-	{
+	if (pRequest->CookedUrl.pAbsPath){
 		int len = WideCharToMultiByte(CP_UTF8, 0, pRequest->CookedUrl.pAbsPath, -1, NULL, 0, NULL, NULL);
-		if (len > 0)
-		{
+		if (len > 0){
 			url.resize(len - 1);
 			WideCharToMultiByte(CP_UTF8, 0, pRequest->CookedUrl.pAbsPath, -1, &url[0], len, NULL, NULL);
 		}
@@ -304,8 +256,7 @@ DWORD CWindowsService::ProcessHttpRequest(PHTTP_REQUEST pRequest, HTTP_REQUEST_I
 
 	// Get HTTP method
 	std::string method;
-	switch (pRequest->Verb)
-	{
+	switch (pRequest->Verb){
 	case HttpVerbGET:    method = "GET"; break;
 	case HttpVerbPOST:   method = "POST"; break;
 	case HttpVerbPUT:    method = "PUT"; break;
@@ -314,25 +265,29 @@ DWORD CWindowsService::ProcessHttpRequest(PHTTP_REQUEST pRequest, HTTP_REQUEST_I
 	default:             method = "UNKNOWN"; break;
 	}
 
+ // Extract request body for POST requests
+    std::string requestBody;
+    if (method == "POST" && pRequest->EntityChunkCount > 0) {
+        PHTTP_DATA_CHUNK pDataChunk = &pRequest->pEntityChunks[0];
+        if (pDataChunk->DataChunkType == HttpDataChunkFromMemory) {
+            requestBody.assign((char*)pDataChunk->FromMemory.pBuffer, pDataChunk->FromMemory.BufferLength);
+        }
+    }
 	// Log API request
-	TCHAR szLog[256];
-	_stprintf_s(szLog, 256, _T("API: %S %S"), method.c_str(), url.c_str());
-	WriteToEventLog(szLog, EVENTLOG_INFORMATION_TYPE);
+	char szLog[256];
+	sprintf(szLog,  "API: %S %S", method.c_str(), url.c_str());
+	WriteToEventLog(szLog);
 
 	// Handle CORS preflight
-	if (method == "OPTIONS")
-	{
+	if (method == "OPTIONS"){
 		return SendJsonResponse(RequestId, 200, "");
 	}
 
 	// Route API requests
-	if (url.find("/api/") == 0)
-	{
-		std::string response = HandleApiRequest(url.c_str(), method.c_str());
+	if (url.find("/api/") == 0){
+        std::string response = HandleApiRequest(url.c_str(), method.c_str(), requestBody.c_str());
 		return SendJsonResponse(RequestId, 200, response.c_str());
-	}
-	else
-	{
+	}else{
 		// Non-API requests get 404
 		return SendJsonResponse(RequestId, 404, "{\"error\":\"API endpoint not found\"}");
 	}
@@ -341,8 +296,7 @@ DWORD CWindowsService::ProcessHttpRequest(PHTTP_REQUEST pRequest, HTTP_REQUEST_I
 /**
 * @brief Send JSON response with CORS headers
 */
-DWORD CWindowsService::SendJsonResponse(HTTP_REQUEST_ID RequestId, USHORT StatusCode, const char* pJsonContent)
-{
+DWORD CWindowsService::SendJsonResponse(HTTP_REQUEST_ID RequestId, USHORT StatusCode, const char* pJsonContent){
 	HTTP_RESPONSE response;
 	HTTP_DATA_CHUNK dataChunk;
 
@@ -377,8 +331,7 @@ DWORD CWindowsService::SendJsonResponse(HTTP_REQUEST_ID RequestId, USHORT Status
 	response.Headers.pUnknownHeaders = corsHeaders;
 
 	// Set response body
-	if (pJsonContent && strlen(pJsonContent) > 0)
-	{
+	if (pJsonContent && strlen(pJsonContent) > 0){
 		dataChunk.DataChunkType = HttpDataChunkFromMemory;
 		dataChunk.FromMemory.pBuffer = (PVOID)pJsonContent;
 		dataChunk.FromMemory.BufferLength = (ULONG)strlen(pJsonContent);
@@ -392,36 +345,57 @@ DWORD CWindowsService::SendJsonResponse(HTTP_REQUEST_ID RequestId, USHORT Status
 /**
 * @brief Handle API endpoint requests
 */
-std::string CWindowsService::HandleApiRequest(const char* pPath, const char* pMethod)
-{
+std::string CWindowsService::HandleApiRequest(const char* pPath, const char* pMethod, const char* pRequestBody) {
 	std::ostringstream json;
 
-	if (strcmp(pPath, "/api/status") == 0 && strcmp(pMethod, "GET") == 0)
-	{
+	if (strcmp(pPath, "/api/status") == 0 && strcmp(pMethod, "GET") == 0){
 		json << "{\"status\":\"running\",\"port\":" << m_HttpPort << ",\"uptime\":" << (GetTickCount() / 1000) << "}";
-	}
-	else if (strcmp(pPath, "/api/files") == 0 && strcmp(pMethod, "GET") == 0)
-	{
-		json << "{\"files\":[";
+	}else if (strcmp(pPath, "/api/files") == 0 && strcmp(pMethod, "GET") == 0){
+		std::string folder=ShowFolderSelection();
+		if (folder != ""){
+			enumerateFiles(folder);
+			json << "{\"files\":[";
+			for (size_t i = 0; i < localFiles.size(); ++i) {
+				 auto& file = localFiles[i];
+				json << "{";
+				json << "\"filename\":\"" << file.getshortName() << "\",";
+				json << "\"size\":" << file.getFileSize() << ",";
+				json << "\"sha256\":\"" << file.getHash() << "\",";
+				json << "\"creation\":\"" << file.getCreationDate() << "\",";
+				json << "\"modified\":\"" << file.getLastWriteDate() << "\"";
+				json << "}";
+				if (i != localFiles.size() - 1)
+					json << ",";
+			}
+			json << "],\"count\":" << localFiles.size() << "}";
+		}else{
+			WriteToEventLog("Returning empty file list");
+			json << "{\"files\":[";
+			json << "],\"count\":" << "0, files not found" << "}";
+		}
+		/*json << "{\"files\":[";
 		json << "{\"name\":\"document.pdf\",\"size\":1024000,\"path\":\"C:\\\\Shared\\\\document.pdf\"},";
 		json << "{\"name\":\"image.jpg\",\"size\":512000,\"path\":\"C:\\\\Shared\\\\image.jpg\"}";
-		json << "],\"count\":2}";
+		json << "],\"count\":2}";*/
+		//new code to write the real data
+		
+
 	}
-	else if (strncmp(pPath, "/api/file/", 10) == 0 && strcmp(pMethod, "GET") == 0)
-	{
+	else if (strncmp(pPath, "/api/file/", 10) == 0 && strcmp(pMethod, "GET") == 0){
 		const char* filename = pPath + 10;
 		json << "{\"filename\":\"" << filename << "\",\"data\":\"base64data\",\"size\":1024}";
 	}
-	else if (strcmp(pPath, "/api/upload") == 0 && strcmp(pMethod, "POST") == 0)
-	{
+	else if (strcmp(pPath, "/api/upload") == 0 && strcmp(pMethod, "POST") == 0){
 		json << "{\"success\":true,\"message\":\"File uploaded successfully\"}";
 	}
-	else if (strcmp(pPath, "/api/peers") == 0 && strcmp(pMethod, "GET") == 0)
-	{
-		json << "{\"peers\":[{\"id\":\"peer1\",\"ip\":\"192.168.1.100\",\"port\":8847}],\"count\":1}";
-	}
-	else
-	{
+    else if (strcmp(pPath, "/api/download") == 0 && strcmp(pMethod, "POST") == 0) {
+        // Handle file download request using TCP client
+        json << HandleDownloadRequest(pRequestBody);
+    }
+    else if (strcmp(pPath, "/api/peers") == 0 && strcmp(pMethod, "GET") == 0) {
+        json << "{\"peers\":[{\"id\":\"peer1\",\"ip\":\"192.168.1.100\",\"port\":8847}],\"count\":1}";
+    }
+    else {
 		json << "{\"error\":\"Unknown API endpoint\",\"path\":\"" << pPath << "\"}";
 	}
 
@@ -429,10 +403,127 @@ std::string CWindowsService::HandleApiRequest(const char* pPath, const char* pMe
 }
 
 /**
-* @brief Get HTTP port from registry configuration
+ * @brief Handle download request from web interface
+ */
+std::string CWindowsService::HandleDownloadRequest(const char* pRequestBody) {
+    if (!pRequestBody) {
+        return "{\"success\":false,\"message\":\"No request body provided\"}";
+    }
+    
+    std::string requestJson(pRequestBody);
+    
+    // Extract filename and IP addresses from JSON
+    std::string filename = ExtractJsonValue(requestJson, "filename");
+    std::string firstIP = ExtractFirstIP(requestJson, "ip_addresses");
+    
+    if (filename.empty() || firstIP.empty()) {
+        return "{\"success\":false,\"message\":\"Missing filename or IP addresses\"}";
+    }
+    
+    // Log the download request
+    char logMsg[512];
+    sprintf_s(logMsg, "Download request: %s from %s", filename.c_str(), firstIP.c_str());
+    WriteToEventLog(logMsg);
+    
+    // Create output path
+    std::string outputPath = "C:\\Downloads\\" + filename;
+    
+    // Use TCP client to download file
+    bool downloadSuccess = DownloadFileFromPeer(firstIP, filename, outputPath);
+    
+    if (downloadSuccess) {
+        return "{\"success\":true,\"message\":\"File downloaded successfully\",\"filename\":\"" + filename + "\",\"source_ip\":\"" + firstIP + "\"}";
+    } else {
+        return "{\"success\":false,\"message\":\"Download failed\",\"filename\":\"" + filename + "\",\"source_ip\":\"" + firstIP + "\"}";
+    }
+}
+/**
+ * @brief Download file from peer using TCP client
+ */
+bool CWindowsService::DownloadFileFromPeer(const std::string& serverIP, const std::string& filename, const std::string& outputPath) {
+    // Create TCP client instance from your client.h
+	TCPFileClient client("", 0);
+    
+    // Initialize client
+    if (!client.Initialize()) {
+        WriteToEventLog("Failed to initialize TCP client");
+        return false;
+    }
+    
+    // Download file using the client
+    bool result = client.DownloadFileFromServer(serverIP, filename, outputPath);
+    
+    if (result) {
+        char logMsg[512];
+        sprintf_s(logMsg, "Successfully downloaded %s from %s", filename.c_str(), serverIP.c_str());
+        WriteToEventLog(logMsg);
+    } else {
+        char logMsg[512];
+        sprintf_s(logMsg, "Failed to download %s from %s", filename.c_str(), serverIP.c_str());
+        WriteToEventLog(logMsg);
+    }
+    
+    return result;
+}
+/**
+ * @brief Extract JSON value by key
+ */
+std::string CWindowsService::ExtractJsonValue(const std::string& json, const std::string& key) {
+    std::string searchKey = "\"" + key + "\"";
+    size_t keyPos = json.find(searchKey);
+    if (keyPos == std::string::npos) {
+        return "";
+    }
+    
+    size_t colonPos = json.find(':', keyPos);
+    if (colonPos == std::string::npos) {
+        return "";
+    }
+    
+    size_t valueStart = json.find('"', colonPos);
+    if (valueStart == std::string::npos) {
+        return "";
+    }
+    valueStart++; // Skip opening quote
+    
+    size_t valueEnd = json.find('"', valueStart);
+    if (valueEnd == std::string::npos) {
+        return "";
+    }
+    
+    return json.substr(valueStart, valueEnd - valueStart);
+}
+/**
+ * @brief Extract first IP address from JSON array
+ */
+std::string CWindowsService::ExtractFirstIP(const std::string& json, const std::string& arrayKey) {
+    std::string searchKey = "\"" + arrayKey + "\"";
+    size_t keyPos = json.find(searchKey);
+    if (keyPos == std::string::npos) {
+        return "";
+    }
+    
+    size_t arrayStart = json.find('[', keyPos);
+    if (arrayStart == std::string::npos) {
+        return "";
+    }
+    
+    size_t firstQuote = json.find('"', arrayStart);
+    if (firstQuote == std::string::npos) {
+        return "";
+    }
+    firstQuote++; // Skip opening quote
+    
+    size_t secondQuote = json.find('"', firstQuote);
+    if (secondQuote == std::string::npos) {
+        return "";
+    }
+    
+    return json.substr(firstQuote, secondQuote - firstQuote);
+}
+/*brief Get HTTP port from registry configuration
 */
-DWORD CWindowsService::GetHttpPortFromRegistry()
-{
+DWORD CWindowsService::GetHttpPortFromRegistry(){
 	HKEY hKey;
 	DWORD dwPort = DEFAULT_HTTP_PORT;
 
@@ -450,146 +541,148 @@ DWORD CWindowsService::GetHttpPortFromRegistry()
 	return dwPort;
 }
 
-/**
-* @brief Install service in SCM
-*/
-BOOL CWindowsService::InstallService()
+std::string CWindowsService::ShowFolderSelection()
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
-	TCHAR szPath[MAX_PATH];
+	std::string result = "";
+		// Initialize COM
+		HRESULT hr = CoInitialize(NULL);
+		if (FAILED(hr)) 
+		{
+			WriteToEventLog("COM initialization failed.");
+			return result;
+		}
 
-	if (!GetModuleFileName(NULL, szPath, MAX_PATH))
-	{
-		_tprintf(_T("Cannot install service (%d)\n"), GetLastError());
-		return FALSE;
-	}
+		BROWSEINFOA bi = { 0 };
+		bi.lpszTitle = "Select folder to share with peers";
+		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_NONEWFOLDERBUTTON;
 
-	// Get a handle to the SCM database
-	schSCManager = OpenSCManager(
-		NULL,                    // local computer
-		NULL,                    // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
+		LPITEMIDLIST pidl = SHBrowseForFolderA(&bi);
+		if (pidl != NULL) 
+		{
+			char path[MAX_PATH];
+			if (SHGetPathFromIDListA(pidl, path)) 
+			{
+				result = path;
+			}
+			else 
+			{
+				WriteToEventLog("Failed to get folder path.");
+			}
+			CoTaskMemFree(pidl);
+		}
+		else 
+		{
+			WriteToEventLog("No folder selected.");
+		}
 
-	if (NULL == schSCManager)
-	{
-		_tprintf(_T("OpenSCManager failed (%d)\n"), GetLastError());
-		return FALSE;
-	}
-
-	// Create the service
-	schService = CreateService(
-		schSCManager,              // SCM database 
-		SERVICE_NAME,              // name of service 
-		SERVICE_DISPLAY_NAME,      // service name to display 
-		SERVICE_ALL_ACCESS,        // desired access 
-		SERVICE_WIN32_OWN_PROCESS, // service type 
-		SERVICE_DEMAND_START,      // start type 
-		SERVICE_ERROR_NORMAL,      // error control type 
-		szPath,                    // path to service's binary 
-		NULL,                      // no load ordering group 
-		NULL,                      // no tag identifier 
-		NULL,                      // no dependencies 
-		NULL,                      // LocalSystem account 
-		NULL);                     // no password 
-
-	if (schService == NULL)
-	{
-		_tprintf(_T("CreateService failed (%d)\n"), GetLastError());
-		CloseServiceHandle(schSCManager);
-		return FALSE;
-	}
-	else
-	{
-		_tprintf(_T("Service installed successfully\n"));
-	}
-
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
-	return TRUE;
+		CoUninitialize();
+		return result;
 }
 
-/**
-* @brief Uninstall service from SCM
-*/
-BOOL CWindowsService::UninstallService()
-{
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
 
-	// Get a handle to the SCM database
-	schSCManager = OpenSCManager(
-		NULL,                    // local computer
-		NULL,                    // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
 
-	if (NULL == schSCManager)
-	{
-		_tprintf(_T("OpenSCManager failed (%d)\n"), GetLastError());
-		return FALSE;
-	}
 
-	// Get a handle to the service
-	schService = OpenService(
-		schSCManager,       // SCM database 
-		SERVICE_NAME,       // name of service 
-		DELETE);            // need delete access 
 
-	if (schService == NULL)
-	{
-		_tprintf(_T("OpenService failed (%d)\n"), GetLastError());
-		CloseServiceHandle(schSCManager);
-		return FALSE;
-	}
 
-	// Delete the service
-	if (!DeleteService(schService))
-	{
-		_tprintf(_T("DeleteService failed (%d)\n"), GetLastError());
-	}
-	else
-	{
-		_tprintf(_T("Service deleted successfully\n"));
-	}
-
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
-	return TRUE;
-}
-
-/**
-* @brief Update and report service status to SCM
-*/
-void CWindowsService::SetServiceStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint)
-{
-	static DWORD dwCheckPoint = 1;
-
-	m_ServiceStatus.dwCurrentState = dwCurrentState;
-	m_ServiceStatus.dwWin32ExitCode = dwWin32ExitCode;
-	m_ServiceStatus.dwWaitHint = dwWaitHint;
-
-	if (dwCurrentState == SERVICE_START_PENDING)
-		m_ServiceStatus.dwControlsAccepted = 0;
-	else
-		m_ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
-
-	if ((dwCurrentState == SERVICE_RUNNING) || (dwCurrentState == SERVICE_STOPPED))
-		m_ServiceStatus.dwCheckPoint = 0;
-	else
-		m_ServiceStatus.dwCheckPoint = dwCheckPoint++;
-
-	::SetServiceStatus(m_StatusHandle, &m_ServiceStatus);
-}
 
 /**
 * @brief Write message to Windows Event Log
 */
-void CWindowsService::WriteToEventLog(LPCTSTR pszMessage, WORD wType)
+void CWindowsService::WriteToEventLog(char* pszMessage)
 {
-	HANDLE hEventSource = RegisterEventSource(NULL, SERVICE_NAME);
-	if (hEventSource != NULL)
+
+	static char logFilePath[MAX_PATH] = { 0 };
+
+	// Build the log file path once
+	if (logFilePath[0] == 0) 
 	{
-		ReportEvent(hEventSource, wType, 0, 0, NULL, 1, 0, &pszMessage, NULL);
-		DeregisterEventSource(hEventSource);
+		char tempPath[MAX_PATH];
+		if (GetTempPathA(MAX_PATH, tempPath)) 
+		{
+			StringCchPrintfA(logFilePath, MAX_PATH, "%s%s", tempPath, "MyServiceApp.log");
+		}
+		else 
+		{
+			return; // Failed to get temp path
+		}
 	}
+
+
+	// Open the log file in append mode
+	HANDLE hFile = CreateFileA(
+		logFilePath,
+		FILE_APPEND_DATA,
+		FILE_SHARE_READ,
+		NULL,
+		OPEN_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+		);
+
+	if (hFile != INVALID_HANDLE_VALUE) 
+	{
+		DWORD written;
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+
+		char buffer[1024];
+		StringCchPrintfA(buffer, 1024, "[%04d-%02d-%02d %02d:%02d:%02d] %s\r\n",
+			st.wYear, st.wMonth, st.wDay,
+			st.wHour, st.wMinute, st.wSecond,
+			pszMessage);
+
+		WriteFile(hFile, buffer, lstrlenA(buffer), &written, NULL);
+		CloseHandle(hFile);
+	}
+
+
+}
+
+void CWindowsService::enumerateFiles(std::string folderPath)
+{
+	//clear local files array
+	localFiles.clear();
+	// Make search pattern: folder\*
+	std::string searchPattern = folderPath;
+	if (!searchPattern.empty() && searchPattern.back() != '\\')
+		searchPattern += '\\';
+	searchPattern += "*";
+
+	WIN32_FIND_DATAA findData;
+	HANDLE hFind = FindFirstFileA(searchPattern.c_str(), &findData);
+
+	if (hFind == INVALID_HANDLE_VALUE)
+	{
+		WriteToEventLog("FindFirstFileA failed , empty folder or system error");
+		return ; // No files found or error
+	}
+	do
+	{
+		// Skip "." and ".."
+		if (strcmp(findData.cFileName, ".") == 0 || strcmp(findData.cFileName, "..") == 0)
+			continue;
+
+		// Only include normal files (not directories)
+		if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			continue;
+
+		// skip hidden/system files:
+		 if (findData.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
+		    continue;
+
+		// Full path
+		std::string fullPath = folderPath;
+		if (!fullPath.empty() && fullPath.back() != '\\')
+			fullPath += '\\';
+		fullPath += findData.cFileName;
+		localFileHandler f(fullPath);
+		f.setfileSize(findData.nFileSizeLow, findData.nFileSizeHigh);
+		f.setCreationDate(findData.ftCreationTime);
+		f.setWriteTime(findData.ftLastWriteTime);
+		localFiles.push_back(f);
+
+	} while (FindNextFileA(hFind, &findData));
+
+	FindClose(hFind);
+	
 }

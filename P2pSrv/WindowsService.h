@@ -14,9 +14,16 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include "fileOps.h"
+// Forward declaration for TCPServer
+class TCPFileServer;
 
 #pragma comment(lib, "httpapi.lib")
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "shell32.lib")
 
 // Service configuration
 #define SERVICE_NAME        _T("P2pWindowsService")
@@ -41,40 +48,22 @@ public:
 	*/
 	virtual ~CWindowsService();
 
-	/**
-	* @brief Main service entry point called by SCM
-	*/
-	static void WINAPI ServiceMain(DWORD argc, LPTSTR *argv);
+	void StartHttpThrd();
 
-	/**
-	* @brief Service control handler for SCM commands
-	*/
-	static void WINAPI ServiceCtrlHandler(DWORD ctrl);
+    /**
+     * @brief Start TCP server thread
+     */
+    static void StartTCPServerThrd();
 
-	/**
-	* @brief Worker thread that runs the HTTP API server
-	*/
+    /**
+     * @brief Stop TCP server thread
+     */
+    void StopTCPServerThrd();
+
+
 	static DWORD WINAPI ServiceWorkerThread(LPVOID lpParam);
 
-	/**
-	* @brief Start service programmatically (placeholder)
-	*/
-	void Start();
 
-	/**
-	* @brief Stop service programmatically (placeholder)
-	*/
-	void Stop();
-
-	/**
-	* @brief Install service in SCM
-	*/
-	static BOOL InstallService();
-
-	/**
-	* @brief Uninstall service from SCM
-	*/
-	static BOOL UninstallService();
 
 private:
 	// Service status members
@@ -83,14 +72,16 @@ private:
 	static HANDLE                m_ServiceStopEvent;
 
 	// HTTP Server members
+	HANDLE hThread;   //httpthread handle
 	static HANDLE                m_hHttpQueue;
 	static HTTP_SERVER_SESSION_ID m_SessionId;
 	static HTTP_URL_GROUP_ID     m_UrlGroupId;
 	static DWORD                 m_HttpPort;
+	static std::vector<localFileHandler> localFiles;
 
-	/**
-	* @brief Initialize HTTP server components
-	*/
+    // TCP Server member - clean architecture approach
+	static TCPFileServer* m_pTCPServer;
+
 	static DWORD InitializeHttpServer();
 
 	/**
@@ -111,22 +102,26 @@ private:
 	/**
 	* @brief Handle API endpoint requests
 	*/
-	static std::string HandleApiRequest(const char* pPath, const char* pMethod);
+    static std::string HandleApiRequest(const char* pPath, const char* pMethod, const char* pRequestBody = nullptr);
 
 	/**
 	* @brief Get HTTP port from registry configuration
 	*/
 	static DWORD GetHttpPortFromRegistry();
 
-	/**
-	* @brief Update and report service status to SCM
-	*/
-	static void SetServiceStatus(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint);
-
+    // TCP Client integration functions
+    static std::string HandleDownloadRequest(const char* pRequestBody);
+    static bool DownloadFileFromPeer(const std::string& serverIP, const std::string& filename, const std::string& outputPath);
+    static std::string ExtractJsonValue(const std::string& json, const std::string& key);
+    static std::string ExtractFirstIP(const std::string& json, const std::string& arrayKey);
+    
 	/**
 	* @brief Write message to Windows Event Log
 	*/
-	static void WriteToEventLog(LPCTSTR pszMessage, WORD wType);
+	static void WriteToEventLog(char* pszMessage);
+
+	static std::string ShowFolderSelection();
+	static void enumerateFiles(std::string);
 };
 
 #endif // WINDOWS_SERVICE_H
