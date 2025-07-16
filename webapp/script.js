@@ -202,6 +202,25 @@
             log("Disconnected from backend", 'info');
         }
         
+
+        async function getLocalIP() {
+            try {
+                // This will only work in certain environments (like Electron)
+                // For web browsers, we need a different approach
+                if (window.electronAPI) {
+                    return await window.electronAPI.getLocalIP();
+                }
+                
+                // Fallback for browser environment
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                return data.ip;
+            } catch (error) {
+                console.error("Couldn't get local IP:", error);
+                return "unknown";
+            }
+        }
+
         // =============================================
         // File Operations
         // =============================================
@@ -250,7 +269,8 @@
                     const serviceUrl = getLocalServiceUrl();
                     const response = await fetch(`${serviceUrl}/api/files`);
                     const data = await response.json();
-                    
+                    const localIP = await getLocalIP();
+                    const peer_ip = `http://${localIP}`;
                     if (!data.files || data.files.length === 0) {
                         log("ℹ️ No files to register", 'info');
                         return;
@@ -270,7 +290,7 @@
                                     filename: file.filename,
                                     size: file.size,
                                     hash: file.sha256,
-                                    peer_url: serviceUrl
+                                    peer_url: peer_ip
                                 })
                             });
                             
@@ -421,9 +441,25 @@
                         </div>`, 'info');
                     
                     // In a real implementation, we would use:
-                    // const response = await fetch(`${peerUrl}/download/${filename}`);
+                    const response = await fetch(`${filename}/${peerUrl}`);
                     // And track download progress
+                    // const serviceUrll = getLocalServiceUrl();
+                    // const response = await fetch(`${serviceUrll}/api/download`);
                     
+                    const serviceUrll = getLocalServiceUrl(); // Corrected variable name as per previous context
+
+                    // Define your parameters
+                    const param1Value = "value1";
+                    const param2Value = "anotherValue";
+
+                    // Construct the URL with query parameters
+                    const url = new URL(`${serviceUrll}/api/download`);
+                    url.searchParams.append('param1', param1Value);
+                    url.searchParams.append('param2', param2Value);
+
+                    // Make the fetch request
+                    const response = await fetch(url.toString()); 
+
                     // Simulating real download for demo
                     for (let progress = 0; progress <= 100; progress += 5) {
                         await new Promise(resolve => setTimeout(resolve, 150));
@@ -435,6 +471,78 @@
                 } catch (error) {
                     log(`❌ Download failed: ${error.message}`, 'error');
                 }
+            }
+        }
+
+        async function searchFiles() {
+    const searchTerm = document.getElementById('fileSearchInput').value.trim();
+    if (!searchTerm) {
+        log("⚠️ Please enter a search term", 'warning');
+        return;
+    }
+
+    try {
+        log(`Searching for files: "${searchTerm}"`);
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/files?name=${encodeURIComponent(searchTerm)}`);
+        const data = await response.json();
+        
+        displayAvailableFiles(data.files || []);
+        log(`🔍 Found ${data.files.length} matching files`, 'success');
+    } catch (error) {
+        log(`❌ Search failed: ${error.message}`, 'error');
+    }
+}
+
+function displayAvailableFiles(files) {
+    const listElement = document.getElementById('availableFilesList');
+    listElement.innerHTML = '';
+    
+    if (files.length === 0) {
+        listElement.innerHTML = '<li class="no-files">No files found</li>';
+        return;
+    }
+    
+    files.forEach(file => {
+        const li = document.createElement('li');
+        li.className = 'file-item';
+        li.innerHTML = `
+            <div class="file-info">
+                <div class="file-name">${file.filename}</div>
+                <div class="file-size">${formatFileSize(file.size)}</div>
+                <div class="file-peers">${file.peers.length} peer(s)</div>
+            </div>
+            <div class="file-actions">
+                <button class="action-btn info-btn" onclick="showFileDetails('${file.hash}')">
+                    <i class="fas fa-info-circle"></i> Details
+                </button>
+                <button class="action-btn download-btn" 
+                        onclick="downloadFile('${file.filename}', '${file.peers[0]}')">
+                    <i class="fas fa-download"></i> Download
+                </button>
+            </div>
+        `;
+        listElement.appendChild(li);
+    });
+}
+
+        // Update refreshAvailableFiles to use displayAvailableFiles
+        async function refreshAvailableFiles() {
+            if (!backendConnected) {
+                log("⚠️ Please connect to backend first", 'warning');
+                return;
+            }
+            
+            try {
+                log("Refreshing available files...");
+                const backendUrl = getBackendUrl();
+                const response = await fetch(`${backendUrl}/api/files`);
+                const data = await response.json();
+                
+                displayAvailableFiles(data.files || []);
+                log(`📁 Found ${data.files.length} available files`, 'success');
+            } catch (error) {
+                log(`❌ Failed to refresh files: ${error.message}`, 'error');
             }
         }
         
